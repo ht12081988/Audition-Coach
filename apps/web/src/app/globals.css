@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #003265;
+  --primary-container: #00488d;
+  --on-primary: #ffffff;
+  
+  --secondary-container: #acf0dd;
+  --on-secondary-container: #2c6f60;
+
+  --tertiary: #6c0005;
+  --tertiary-container: #97000a;
+  --on-tertiary: #ffffff;
+
+  --surface: #f9f9ff;
+  --surface-container-low: #f3f3f9;
+  --surface-container-high: #e7e8ee;
+  --surface-container-lowest: #ffffff;
+  --on-surface: #191c20;
+  --on-surface-variant: #424751;
+  
+  --outline: #737782;
+  --outline-variant: #c2c6d2;
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary: var(--on-primary);
+  
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary-container: var(--on-secondary-container);
+
+  --color-tertiary: var(--tertiary);
+  --color-tertiary-container: var(--tertiary-container);
+  --color-on-tertiary: var(--on-tertiary);
+
+  --color-surface: var(--surface);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+
+  --font-inter: var(--font-inter);
+  --font-manrope: var(--font-manrope);
+  
+  --font-headline: var(--font-manrope);
+  --font-body: var(--font-inter);
+  --font-label: var(--font-inter);
+  
+  --radius-full: 9999px;
+  --radius-xl: 3rem;
+}
+
+@layer base {
+  * {
+    @apply border-outline-variant/20;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-surface-container-lowest/80 backdrop-blur-[20px];
+  }
+  
+  .gradient-primary {
+    @apply bg-gradient-to-br from-primary to-primary-container;
+  }
+  
+  /* The "No-Line" rule: use background color shifts instead of borders */
+  .cinematic-card {
+    @apply bg-surface-container-lowest rounded-xl shadow-[0_32px_32px_-32px_rgba(25,28,32,0.06)];
+  }
+  
+  .cinematic-input {
+    @apply bg-surface-container-high rounded-full px-6 py-3 transition-colors focus:bg-surface-container-lowest focus:outline-none focus:ring-1 focus:ring-outline-variant/20;
+  }
+}

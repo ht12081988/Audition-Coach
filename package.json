@@ -1,0 +1,24 @@
+{
+  "name": "audition-coach-monorepo",
+  "packageManager": "npm@11.11.0",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "cross-env NODE_OPTIONS='--max-old-space-size=4096' turbo build",
+    "dev": "cross-env NODE_OPTIONS='--max-old-space-size=4096' turbo dev",
+    "lint": "turbo lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "prettier": "^3.2.5",
+    "turbo": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
