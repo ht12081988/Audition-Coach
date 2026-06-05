@@ -492,10 +492,10 @@ function ProcessingStepsView() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full bg-surface-container-high border border-outline-variant/20 rounded-[2.5rem] p-10 shadow-xl"
+        className="w-full bg-surface-container-high border border-outline-variant/20 rounded-[2.5rem] p-7 shadow-xl"
       >
         {/* Animated icon */}
-        <div className="flex items-center justify-center mb-8">
+        <div className="flex items-center justify-center mb-5">
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
@@ -503,15 +503,15 @@ function ProcessingStepsView() {
               animate={{ scale: 1, opacity: 1, rotate: 0 }}
               exit={{ scale: 0.6, opacity: 0, rotate: 20 }}
               transition={{ type: 'spring', stiffness: 260, damping: 18 }}
-              className={`w-20 h-20 rounded-full bg-gradient-to-br ${current.color} flex items-center justify-center shadow-2xl ${current.glow}`}
+              className={`w-16 h-16 rounded-full bg-gradient-to-br ${current.color} flex items-center justify-center shadow-2xl ${current.glow}`}
             >
-              <CurrentIcon size={38} className="text-white" strokeWidth={1.5} />
+              <CurrentIcon size={30} className="text-white" strokeWidth={1.5} />
             </motion.div>
           </AnimatePresence>
         </div>
 
         {/* Label & detail */}
-        <div className="text-center mb-8 min-h-[4.5rem]">
+        <div className="text-center mb-5 min-h-[3.5rem]">
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
@@ -531,7 +531,7 @@ function ProcessingStepsView() {
         </div>
 
         {/* Step progress bar */}
-        <div className="mb-8">
+        <div className="mb-5">
           <div className="h-2 bg-surface-container rounded-full overflow-hidden">
             <motion.div
               className={`h-full rounded-full bg-gradient-to-r ${current.color}`}
@@ -545,7 +545,7 @@ function ProcessingStepsView() {
         </div>
 
         {/* Steps list */}
-        <div className="space-y-3">
+        <div className="space-y-2">
           {PROCESSING_STEPS.map((s, i) => {
             const StepIcon = s.icon;
             const isComplete = i < step;

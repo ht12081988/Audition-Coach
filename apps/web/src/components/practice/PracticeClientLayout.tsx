@@ -8,6 +8,7 @@ type Script = {
   id: string;
   category: string;
   scene_context: string;
+  archetype?: string;
   script: string;
 };
 
