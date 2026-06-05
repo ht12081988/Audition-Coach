@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Share2, MoreHorizontal, Loader2, PlayCircle, AlertCircle, TrendingUp, Target, BookOpen, Film, Mic2, Eye, BarChart2, Sparkles, CheckCircle } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal, Loader2, AlertCircle, TrendingUp, Target, BookOpen, Film, Mic2, Eye, BarChart2, Sparkles, CheckCircle, UserCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import AnalysisMetrics from '@/components/analysis/AnalysisMetrics';
@@ -9,6 +9,7 @@ import LineByLineAnalysis from '@/components/analysis/LineByLineAnalysis';
 import WordAccountability from '@/components/analysis/WordAccountability';
 import PerformanceRadarView from '@/components/analysis/PerformanceRadarView';
 import EnergyTimelineView from '@/components/analysis/EnergyTimelineView';
+import CharacterFitTab, { type CharacterFitData } from '@/components/analysis/CharacterFitTab';
 import { calculatePerformanceStats } from '@/lib/utils/performance-analytics';
 import { createClient } from '@/lib/supabase/client';
 import { analyzePerformanceAction } from '@/app/actions/performance';
@@ -24,7 +25,10 @@ export default function AnalysisClientLayout({ performanceId }: AnalysisClientLa
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [data, setData] = useState<any>(null);
+  const [characterFit, setCharacterFit] = useState<CharacterFitData | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [masterTab, setMasterTab] = useState<'performance' | 'character'>('performance');
   const [activeTab, setActiveTab] = useState<TabId>('lines');
   const supabase = createClient();
 
@@ -53,6 +57,52 @@ export default function AnalysisClientLayout({ performanceId }: AnalysisClientLa
         if (analysis.status === 'processing') {
           setTimeout(fetchAnalysis, 3000);
         }
+      }
+
+      // Fetch character fit analysis if available
+      const { data: fitData } = await supabase
+        .from('character_fit_analysis')
+        .select('*')
+        .eq('performance_id', performanceId)
+        .maybeSingle();
+
+      if (fitData) {
+        setCharacterFit(fitData as CharacterFitData);
+      }
+
+      // Fetch performance data for video URL
+      const { data: perfData } = await supabase
+        .from('performance')
+        .select('video_url')
+        .eq('id', performanceId)
+        .maybeSingle();
+
+      if (perfData?.video_url) {
+        let finalUrl = perfData.video_url;
+        
+        // If it's a Supabase public URL, the bucket might be private. Let's try to get a signed URL.
+        if (finalUrl.includes('/object/public/')) {
+          try {
+            const parts = finalUrl.split('/object/public/');
+            const pathParts = parts[1].split('/');
+            const bucket = decodeURIComponent(pathParts.shift() || '');
+            const filePath = decodeURIComponent(pathParts.join('/'));
+            
+            if (bucket && filePath) {
+              const { data: signedData, error: signedError } = await supabase.storage
+                .from(bucket)
+                .createSignedUrl(filePath, 60 * 60 * 24); // 24 hours
+                
+              if (signedData?.signedUrl) {
+                finalUrl = signedData.signedUrl;
+              }
+            }
+          } catch (e) {
+            console.error('Failed to parse or sign video url', e);
+          }
+        }
+        
+        setVideoUrl(finalUrl);
       }
     } catch (err: any) {
       console.error('Error fetching analysis:', err);
@@ -168,157 +218,180 @@ export default function AnalysisClientLayout({ performanceId }: AnalysisClientLa
   ];
 
   return (
-    <main className="max-w-7xl mx-auto px-6 py-12 space-y-16 animate-in fade-in duration-1000">
+    <main className="max-w-7xl mx-auto px-6 py-12 animate-in fade-in duration-1000">
 
-      {/* Header Info */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8 pb-8 border-b border-outline-variant/10">
-        <div className="space-y-6">
-          <div className="flex items-center gap-4">
+      {/* Top Section: Header, Tabs, and Video */}
+      <div className="relative flex flex-col xl:flex-row justify-between items-center gap-6 pb-6 border-b border-outline-variant/10">
+        
+        {/* Left Side: Back Button */}
+        <Link
+          href="/practice"
+          className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center hover:bg-surface-container transition-colors border border-outline-variant/20 group shrink-0 relative z-10"
+          title="Back to Practice"
+        >
+          <ArrowLeft size={24} strokeWidth={2} className="text-on-surface-variant group-hover:text-primary transition-colors" />
+        </Link>
 
-          </div>
-
-          <div className="flex items-center gap-6">
-            <Link
-              href="/practice"
-              className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center hover:bg-surface-container transition-colors border border-outline-variant/20 group shrink-0"
-              title="Back to Practice"
+        {/* Center: Master Tabs */}
+        <div className="static xl:absolute xl:left-1/2 xl:top-1/2 xl:-translate-x-1/2 xl:-translate-y-1/2 flex justify-center w-full xl:w-auto mt-4 xl:mt-0 z-0">
+          <div className="flex p-1.5 bg-[#f3f3f9] dark:bg-slate-800/50 rounded-full w-fit border border-outline-variant/10 shadow-sm shrink-0">
+            <button
+              onClick={() => setMasterTab('performance')}
+              className={`px-8 py-3 rounded-full text-sm font-headline font-bold transition-all duration-300 ${
+                masterTab === 'performance'
+                  ? 'bg-white dark:bg-slate-700 text-on-surface shadow-soft scale-105'
+                  : 'text-on-surface-variant hover:text-on-surface hover:bg-white/50 dark:hover:bg-slate-700/50'
+              }`}
             >
-              <ArrowLeft size={24} strokeWidth={2} className="text-on-surface-variant group-hover:text-primary transition-colors" />
-            </Link>
-            <h2 className="text-5xl md:text-6xl font-headline font-black tracking-tight text-on-surface">Performance Analysis</h2>
+              Performance
+            </button>
+            {characterFit && (
+              <button
+                onClick={() => setMasterTab('character')}
+                className={`px-8 py-3 rounded-full text-sm font-headline font-bold transition-all duration-300 ${
+                  masterTab === 'character'
+                    ? 'bg-white dark:bg-slate-700 text-on-surface shadow-soft scale-105'
+                    : 'text-on-surface-variant hover:text-on-surface hover:bg-white/50 dark:hover:bg-slate-700/50'
+                }`}
+              >
+                Character Fit
+              </button>
+            )}
           </div>
-
         </div>
 
-
+        {/* Right Side: Video Player */}
+        {videoUrl && (
+          <div className="w-[180px] md:w-[200px] xl:w-[240px] shrink-0 sticky top-[88px] z-50">
+            <div className="rounded-[2rem] overflow-hidden border border-outline-variant/10 shadow-xl bg-black">
+              <video 
+                key={videoUrl}
+                controls 
+                preload="metadata"
+                crossOrigin="anonymous"
+                className="w-full aspect-video object-cover"
+                playsInline
+              >
+                <source src={videoUrl} type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Global Performance Metrics */}
-      <section className="space-y-8">
-        <h2 className="text-[10px] font-headline font-black tracking-[0.3em] text-on-surface-variant/40 uppercase">Global Performance Metrics</h2>
-        <AnalysisMetrics
-          score={data.overall_score}
-          averages={{
-            emotion: data.emotion_avg,
-            facial: data.facial_avg,
-            diction: data.diction_avg,
-            pacing: data.pacing_avg,
-            eyes: data.eyes_avg,
-            intent: data.intent_avg
-          }}
-        />
-      </section>
+      {/* Content Area */}
+      <div className="space-y-10 pt-4">
+            {masterTab === 'performance' ? (
+              <>
+                {/* Global Performance Metrics */}
+                <section className="space-y-8">
+                  <AnalysisMetrics
+                    score={data.overall_score}
+                    averages={{
+                      emotion: data.emotion_avg,
+                      facial: data.facial_avg,
+                      diction: data.diction_avg,
+                      pacing: data.pacing_avg,
+                      eyes: data.eyes_avg,
+                      intent: data.intent_avg
+                    }}
+                  />
+                </section>
 
-      {/* Analytics Calculation */}
-      {(() => {
-        const stats = calculatePerformanceStats(data.analysis_lines || []);
-
-        return (
-          <section className="space-y-12">
-            {/* Sticky Tabs Navigation */}
-            <div className="sticky top-[88px] z-40 py-4 -mx-6 px-6 bg-[#f3f3f9]/40 backdrop-blur-md border-b border-transparent transition-all duration-300">
-              <div className="flex flex-wrap items-center justify-center gap-2 p-1.5 rounded-full bg-surface-container-high/50 border border-outline-variant/10 w-fit mx-auto shadow-sm">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`px-8 py-3 rounded-full text-sm font-headline font-bold transition-all duration-300 flex items-center gap-2 ${activeTab === tab.id
-                      ? 'bg-white text-on-surface shadow-soft scale-105'
-                      : 'text-on-surface-variant hover:text-on-surface hover:bg-white/50'
-                      }`}
-                  >
-                    <tab.icon size={16} />
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Tab Content */}
-            <div className="min-h-[400px]">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  {activeTab === 'lines' && (
-                    <div className="space-y-16">
-                      <LineByLineAnalysis lines={data.analysis_lines || []} />
-
-                      {/* Word Accountability shown in the Breakdown tab */}
-                      <div className="space-y-10 pt-16 border-t border-outline-variant/10">
-                        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                          <h2 className="text-[10px] font-headline font-black tracking-[0.3em] text-on-surface-variant/40 uppercase">Vocabulary & Accountability Summary</h2>
-                          <div className="h-px flex-1 bg-outline-variant/10 hidden md:block"></div>
-                        </div>
-                        <WordAccountability lines={data.analysis_lines || []} />
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'energy' && (
-                    <EnergyTimelineView lines={data.analysis_lines || []} />
-                  )}
-
-                  {activeTab === 'radar' && (
-                    <PerformanceRadarView stats={stats} />
-                  )}
-
-                   {activeTab === 'notes' && (
-                    <div className="animate-in slide-in-from-bottom-8 duration-700">
-                      <div className="bg-white dark:bg-slate-900/50 rounded-[2rem] border border-outline-variant/10 p-8 shadow-sm">
-                        <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
-                          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-600 flex-shrink-0">
-                            <MoreHorizontal size={24} />
-                          </div>
-                          <div className="space-y-4 flex-1">
-                            <h3 className="text-[10px] font-headline font-black tracking-[0.4em] uppercase text-on-surface-variant/40">Director&apos;s Final Takeaways</h3>
-                            <ul className="space-y-3">
-                              {(data.directors_notes || 'Your performance shows great potential. Focus on consistent emotional pacing across all beats.')
-                                .split(/[.!?]\s+/)
-                                .filter((s: string) => s.trim().length > 0)
-                                .map((sentence: string, idx: number) => (
-                                  <li key={idx} className="flex gap-3 text-sm md:text-base font-body text-on-surface leading-snug">
-                                    <span className="text-blue-500 font-black">•</span>
-                                    <span>{sentence.trim()}{!sentence.trim().endsWith('.') && '.'}</span>
-                                  </li>
-                                ))}
-                            </ul>
-                          </div>
+                {/* Sub-tabs */}
+                {(() => {
+                  const stats = calculatePerformanceStats(data.analysis_lines || []);
+                  return (
+                    <section className="space-y-12">
+                      {/* Sticky Tabs Navigation */}
+                      <div className="sticky top-[88px] z-40 py-4 -mx-6 px-6 bg-[#f3f3f9]/40 backdrop-blur-md border-b border-transparent transition-all duration-300">
+                        <div className="flex flex-wrap items-center justify-center gap-2 p-1.5 rounded-full bg-surface-container-high/50 border border-outline-variant/10 w-fit mx-auto shadow-sm">
+                          {tabs.map((tab) => (
+                            <button
+                              key={tab.id}
+                              onClick={() => setActiveTab(tab.id)}
+                              className={`px-8 py-3 rounded-full text-sm font-headline font-bold transition-all duration-300 flex items-center gap-2 ${activeTab === tab.id
+                                ? 'bg-white text-on-surface shadow-soft scale-105'
+                                : 'text-on-surface-variant hover:text-on-surface hover:bg-white/50'
+                                }`}
+                            >
+                              <tab.icon size={16} />
+                              {tab.label}
+                            </button>
+                          ))}
                         </div>
                       </div>
 
-                      {/* Additional Context for Notes Tab */}
-                      {/*<div className="grid grid-cols-1 md:grid-cols-2 gap-12 mt-12">
-                        <div className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] border border-outline-variant/10">
-                          <h4 className="text-xs font-headline font-black tracking-widest text-primary uppercase mb-6">Actionable Advice</h4>
-                          <p className="text-lg font-body text-on-surface-variant leading-relaxed">
-                            {stats.wordIntegrityRate < 95 
-                              ? "Re-read the script once without acting to focus purely on diction. Your word integrity rate is below professional grade."
-                              : "Great job on the script accuracy. Now focus on deepening the subtext and emotional nuance of the transition beats."}
-                          </p>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] border border-outline-variant/10">
-                          <h4 className="text-xs font-headline font-black tracking-widest text-primary uppercase mb-6">Growth Trajectory</h4>
-                          <p className="text-lg font-body text-on-surface-variant leading-relaxed">
-                            Your stability score is <span className={stats.stabilityScore > 80 ? "text-green-600 font-black" : "text-amber-600 font-black"}>
-                              {Math.round(stats.stabilityScore)}%
-                            </span>. {stats.stabilityScore > 80 ? "This indicates a professional-level command of your character." : "Work on maintaining focus through the longer silences."}
-                          </p>
-                        </div>
-                      </div>*/}
-                    </div>
-                  )}
-                </motion.div>
-              </AnimatePresence>
-            </div>
-          </section>
-        );
-      })()}
+                      <div className="min-h-[400px]">
+                        <AnimatePresence mode="wait">
+                          <motion.div
+                            key={activeTab}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            transition={{ duration: 0.3 }}
+                          >
+                            {activeTab === 'lines' && (
+                              <div className="space-y-16">
+                                <LineByLineAnalysis lines={data.analysis_lines || []} />
 
+                                <div className="space-y-10 pt-16 border-t border-outline-variant/10">
+                                  <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                                    <h2 className="text-[10px] font-headline font-black tracking-[0.3em] text-on-surface-variant/40 uppercase">Vocabulary & Accountability Summary</h2>
+                                    <div className="h-px flex-1 bg-outline-variant/10 hidden md:block"></div>
+                                  </div>
+                                  <WordAccountability lines={data.analysis_lines || []} />
+                                </div>
+                              </div>
+                            )}
+
+                            {activeTab === 'energy' && (
+                              <EnergyTimelineView lines={data.analysis_lines || []} />
+                            )}
+
+                            {activeTab === 'radar' && (
+                              <PerformanceRadarView stats={stats} />
+                            )}
+
+                            {activeTab === 'notes' && (
+                              <div className="animate-in slide-in-from-bottom-8 duration-700">
+                                <div className="bg-white dark:bg-slate-900/50 rounded-[2rem] border border-outline-variant/10 p-8 shadow-sm">
+                                  <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+                                    <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-600 flex-shrink-0">
+                                      <MoreHorizontal size={24} />
+                                    </div>
+                                    <div className="space-y-4 flex-1">
+                                      <h3 className="text-[10px] font-headline font-black tracking-[0.4em] uppercase text-on-surface-variant/40">Director&apos;s Final Takeaways</h3>
+                                      <ul className="space-y-3">
+                                        {(data.directors_notes || 'Your performance shows great potential. Focus on consistent emotional pacing across all beats.')
+                                          .split(/[.!?]\s+/)
+                                          .filter((s: string) => s.trim().length > 0)
+                                          .map((sentence: string, idx: number) => (
+                                            <li key={idx} className="flex gap-3 text-sm md:text-base font-body text-on-surface leading-snug">
+                                              <span className="text-blue-500 font-black">•</span>
+                                              <span>{sentence.trim()}{!sentence.trim().endsWith('.') && '.'}</span>
+                                            </li>
+                                          ))}
+                                      </ul>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </motion.div>
+                        </AnimatePresence>
+                      </div>
+                    </section>
+                  );
+                })()}
+              </>
+            ) : (
+              <section className="animate-in slide-in-from-bottom-8 duration-700">
+                 {characterFit && <CharacterFitTab data={characterFit} />}
+              </section>
+            )}
+          </div>
     </main>
   );
 }

@@ -38,6 +38,16 @@ export default async function HistoryPage() {
         intent_avg,
         status,
         directors_notes
+      ),
+      character_fit_analysis (
+        id,
+        casting_fit_score,
+        archetype_score,
+        emotional_arc_score,
+        status_score,
+        energy_score,
+        psych_core_score,
+        phys_vocal_score
       )
     `)
     .eq('user_id', user.id)
@@ -49,14 +59,36 @@ export default async function HistoryPage() {
   }
 
   // Format data to ensure script and analysis are objects, not arrays
-  const performances: Performance[] = (rawPerformances || []).map((p: any) => {
+  const performances: Performance[] = await Promise.all((rawPerformances || []).map(async (p: any) => {
     const script = Array.isArray(p.script) ? p.script[0] : p.script;
     const analysis = Array.isArray(p.performance_analysis) ? p.performance_analysis[0] : p.performance_analysis;
+
+    let finalVideoUrl = p.video_url;
+    if (finalVideoUrl && finalVideoUrl.includes('/object/public/')) {
+      try {
+        const parts = finalVideoUrl.split('/object/public/');
+        const pathParts = parts[1].split('/');
+        const bucket = decodeURIComponent(pathParts.shift() || '');
+        const filePath = decodeURIComponent(pathParts.join('/'));
+        
+        if (bucket && filePath) {
+          const { data: signedData } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(filePath, 60 * 60 * 24); // 24 hours
+            
+          if (signedData?.signedUrl) {
+            finalVideoUrl = signedData.signedUrl;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse or sign video url in history', e);
+      }
+    }
 
     return {
       id: p.id,
       created_date_time: p.created_date_time,
-      video_url: p.video_url,
+      video_url: finalVideoUrl,
       script: {
         id: script?.id || '',
         category: script?.category || '',
@@ -75,8 +107,11 @@ export default async function HistoryPage() {
         status: analysis?.status || '',
         directors_notes: analysis?.directors_notes || null,
       },
+      character_fit_analysis: p.character_fit_analysis && p.character_fit_analysis.length > 0
+        ? p.character_fit_analysis[0]
+        : (p.character_fit_analysis || null),
     };
-  });
+  }));
 
   return (
     <div className="min-h-screen bg-surface text-on-surface">

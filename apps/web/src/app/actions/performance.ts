@@ -6,6 +6,7 @@ import { GoogleAIFileManager, FileState } from "@google/generative-ai/server";
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { writeFile, unlink } from 'fs/promises';
+import { buildCharacterFitBlock, buildCharacterBriefFromScript } from '@/lib/prompts/character-fit';
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
 const fileManager = new GoogleAIFileManager(process.env.GOOGLE_AI_API_KEY!);
@@ -17,10 +18,26 @@ export async function analyzePerformanceAction(performanceId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Unauthorized');
 
-  // 2. Fetch Performance and Script
+  // 2. Fetch Performance and Script (including all character brief columns)
   const { data: performance, error: perfError } = await supabase
     .from('performance')
-    .select('*, script(script)')
+    .select(`
+      *,
+      script(
+        script,
+        archetype,
+        emotional_arc,
+        status_in_scene,
+        energy_signature,
+        psychological_core,
+        physical_presence,
+        voice_character,
+        director_vision_note,
+        screen_presence_note,
+        physical_world_fit,
+        role_specific_physicality
+      )
+    `)
     .eq('id', performanceId)
     .single();
 
@@ -41,6 +58,7 @@ export async function analyzePerformanceAction(performanceId: string) {
   }
 
   try {
+    // Call 1 model — no maxOutputTokens cap so long line-analysis responses are never truncated
     const model = genAI.getGenerativeModel({ 
       model: "gemini-2.5-flash",
       generationConfig: {
@@ -165,6 +183,7 @@ export async function analyzePerformanceAction(performanceId: string) {
       }
     `;
 
+    // ─── Call 1: Existing line-by-line performance analysis ────────────────
     const result = await model.generateContent([
       prompt,
       {
@@ -175,13 +194,24 @@ export async function analyzePerformanceAction(performanceId: string) {
       }
     ]);
 
-    // Clean up temporary files and remote file
+    // Clean up temp file from disk (keep remote file for Call 2)
     await unlink(tempFilePath).catch(console.error);
-    await fileManager.deleteFile(uploadResult.file.name).catch(console.error);
 
     const response = await result.response;
     const responseText = response.text();
-    const analysis = JSON.parse(responseText);
+
+    let analysis: any;
+    try {
+      analysis = JSON.parse(responseText);
+    } catch {
+      // Attempt recovery from truncated JSON
+      const trimmed = responseText.substring(0, responseText.lastIndexOf('}') + 1);
+      try {
+        analysis = JSON.parse(trimmed);
+      } catch {
+        throw new Error('AI returned malformed JSON from performance analysis. Please retry.');
+      }
+    }
 
     // 3. Save to Database in Transaction-like behavior
     // A. Update Main Analysis
@@ -255,6 +285,79 @@ export async function analyzePerformanceAction(performanceId: string) {
         await supabase.from('analysis_errors').insert(allErrors);
       }
     }
+
+    // ─── Call 2: Character Fit Analysis (conditional) ───────────────────────
+    const characterBrief = buildCharacterBriefFromScript((performance.script as any));
+
+    if (characterBrief) {
+      try {
+        const fitModel = genAI.getGenerativeModel({
+          model: 'gemini-2.5-flash',
+          generationConfig: {
+            responseMimeType: 'application/json',
+            maxOutputTokens: 8192,
+          },
+        });
+
+        const fitResult = await fitModel.generateContent([
+          buildCharacterFitBlock(characterBrief),
+          {
+            fileData: {
+              fileUri: uploadResult.file.uri,   // same URI — no re-upload
+              mimeType: uploadResult.file.mimeType,
+            },
+          },
+        ]);
+
+        const fitResponseText = fitResult.response.text();
+        let fitData: any;
+        try {
+          fitData = JSON.parse(fitResponseText);
+        } catch {
+          const trimmed = fitResponseText.substring(0, fitResponseText.lastIndexOf('}') + 1);
+          fitData = JSON.parse(trimmed);
+        }
+
+        const cf = fitData?.character_fit;
+        if (cf) {
+          const dims = cf.dimensions ?? {};
+          const sp = dims.screen_presence ?? {};
+          const subScores = sp.sub_scores ?? {};
+
+          await supabase.from('character_fit_analysis').upsert({
+            performance_id:          performanceId,
+            casting_fit_score:       Math.round(cf.casting_fit_score ?? 0),
+            casting_label:           cf.casting_label ?? null,
+            archetype_score:         Math.round(dims.archetype_embodiment?.score ?? 0),
+            archetype_comment:       dims.archetype_embodiment?.comment ?? null,
+            emotional_arc_score:     Math.round(dims.emotional_arc_fidelity?.score ?? 0),
+            emotional_arc_comment:   dims.emotional_arc_fidelity?.comment ?? null,
+            status_score:            Math.round(dims.status_portrayal?.score ?? 0),
+            status_comment:          dims.status_portrayal?.comment ?? null,
+            energy_score:            Math.round(dims.energy_signature_match?.score ?? 0),
+            energy_comment:          dims.energy_signature_match?.comment ?? null,
+            psych_core_score:        Math.round(dims.psychological_core_visibility?.score ?? 0),
+            psych_core_comment:      dims.psychological_core_visibility?.comment ?? null,
+            phys_vocal_score:        Math.round(dims.physical_vocal_alignment?.score ?? 0),
+            phys_vocal_comment:      dims.physical_vocal_alignment?.comment ?? null,
+            screen_presence_score:   sp.score != null ? Math.round(sp.score) : null,
+            screen_presence_comment: sp.comment ?? null,
+            camera_expressiveness:   subScores.camera_expressiveness != null ? Math.round(subScores.camera_expressiveness) : null,
+            presentation_register:   subScores.presentation_register != null ? Math.round(subScores.presentation_register) : null,
+            physical_precision:      subScores.physical_precision_match != null ? Math.round(subScores.physical_precision_match) : null,
+            visual_world_coherence:  subScores.visual_world_coherence != null ? Math.round(subScores.visual_world_coherence) : null,
+            fit_vs_performance_gap:  cf.fit_vs_performance_gap ?? null,
+            director_recommendation: cf.director_recommendation ?? null,
+          });
+        }
+      } catch (fitErr) {
+        // Character fit failure must NOT affect the main analysis result
+        console.error('Character fit analysis failed (non-fatal):', fitErr);
+      }
+    }
+
+    // ─── Cleanup remote file after both calls ────────────────────────────────
+    await fileManager.deleteFile(uploadResult.file.name).catch(console.error);
 
     return { success: true, analysisId: analysisRecord.id };
 
