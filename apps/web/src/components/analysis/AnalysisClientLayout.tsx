@@ -438,6 +438,14 @@ const PROCESSING_STEPS = [
     color: 'from-rose-500 to-pink-600',
     glow: 'shadow-rose-500/30',
   },
+  {
+    icon: UserCheck,
+    label: 'Analysing Character Fit',
+    detail: 'Matching your physicality, tone, and presence against the role profile.',
+    duration: 12,
+    color: 'from-indigo-500 to-violet-600',
+    glow: 'shadow-violet-500/30',
+  },
 ];
 
 function ProcessingStepsView() {
